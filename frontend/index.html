@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Email Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>AI Email Assistant</h1>
+            <p>Generate professional emails with AI</p>
+        </header>
+
+        <section class="card">
+            <label for="instructions">What email would you like to write?</label>
+
+            <textarea
+                id="instructions"
+                placeholder="Example: Write a professional email requesting two days of leave..."
+                rows="5"
+            ></textarea>
+
+            <button id="generateBtn" onclick="generateEmail()">
+                Generate Email
+            </button>
+
+            <p id="status"></p>
+        </section>
+
+        <section class="card" id="draftSection" hidden>
+            <h2>Review Your Email</h2>
+
+            <label for="recipient">Recipient</label>
+            <input type="email" id="recipient" placeholder="recipient@example.com">
+
+            <label for="subject">Subject</label>
+            <input type="text" id="subject" placeholder="Email subject">
+
+            <label for="body">Email Body</label>
+            <textarea id="body" rows="10"></textarea>
+
+            <div class="actions">
+                <button id="sendBtn" onclick="sendEmail()" class="send">
+                    Approve & Send
+                </button>
+
+                <button onclick="rejectEmail()" class="reject">
+                    Reject Draft
+                </button>
+            </div>
+
+            <p id="sendStatus"></p>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
