@@ -15,7 +15,9 @@
         </header>
 
         <section class="card">
-            <label for="instructions">What email would you like to write?</label>
+            <label for="instructions">
+                What email would you like to write?
+            </label>
 
             <textarea
                 id="instructions"
@@ -27,32 +29,59 @@
                 Generate Email
             </button>
 
-            <p id="status"></p>
+            <p id="status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="card" id="draftSection" hidden>
             <h2>Review Your Email</h2>
 
             <label for="recipient">Recipient</label>
-            <input type="email" id="recipient" placeholder="recipient@example.com">
+            <input
+                type="email"
+                id="recipient"
+                placeholder="recipient@example.com"
+                required
+            >
 
             <label for="subject">Subject</label>
-            <input type="text" id="subject" placeholder="Email subject">
+            <input
+                type="text"
+                id="subject"
+                placeholder="Email subject"
+                required
+            >
 
             <label for="body">Email Body</label>
-            <textarea id="body" rows="10"></textarea>
+            <textarea id="body" rows="10" required></textarea>
 
             <div class="actions">
-                <button id="sendBtn" onclick="sendEmail()" class="send">
-                    Approve & Send
+                <button
+                    id="approveBtn"
+                    onclick="approveEmail()"
+                    class="approve"
+                >
+                    Approve Email
                 </button>
 
-                <button onclick="rejectEmail()" class="reject">
+                <button
+                    id="sendBtn"
+                    onclick="sendEmail()"
+                    class="send"
+                    disabled
+                >
+                    Send Email
+                </button>
+
+                <button
+                    id="rejectBtn"
+                    onclick="rejectEmail()"
+                    class="reject"
+                >
                     Reject Draft
                 </button>
             </div>
 
-            <p id="sendStatus"></p>
+            <p id="sendStatus" role="status" aria-live="polite"></p>
         </section>
     </div>
 

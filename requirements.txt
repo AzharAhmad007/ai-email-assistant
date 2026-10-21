@@ -1,3 +1,8 @@
 ollama
 python-dotenv
 certifi
+fastapi
+httpx
+mcp
+pydantic[email]
+uvicorn

@@ -8,6 +8,8 @@ from pydantic import BaseModel, EmailStr, Field
 from app.email_generator import generate_email
 from app.email_sender import send_email
 
+import hashlib
+import json
 
 app = FastAPI(title="AI Email Assistant API")
 
@@ -18,7 +20,7 @@ app.add_middleware(
         "http://localhost:5500",
     ],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
@@ -26,6 +28,22 @@ app.add_middleware(
 # In-memory draft storage for this local prototype.
 drafts = {}
 drafts_lock = Lock()
+
+def calculate_draft_hash(draft: dict) -> str:
+    """Create a fingerprint of the exact email content."""
+    content = {
+        "recipient": draft["recipient"],
+        "subject": draft["subject"],
+        "body": draft["body"],
+    }
+
+    serialized = json.dumps(
+        content,
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 class EmailInstructions(BaseModel):
@@ -70,6 +88,7 @@ def create_email(request: EmailInstructions):
             "subject": email["subject"],
             "body": email["body"],
             "status": "pending",
+            "approved": False,
         }
 
         with drafts_lock:
@@ -90,6 +109,52 @@ def create_email(request: EmailInstructions):
             detail="Email generation failed.",
         )
 
+@app.get("/api/drafts/{draft_id}")
+def get_draft(draft_id: str):
+    with drafts_lock:
+        draft = drafts.get(draft_id)
+
+        if not draft:
+            raise HTTPException(
+                status_code=404,
+                detail="Draft not found.",
+            )
+
+        return {
+            "draft_id": draft_id,
+            **draft,
+        }
+
+@app.post("/api/drafts/{draft_id}/approve")
+def approve_draft(
+    draft_id: str,
+    confirmation: SendConfirmation,
+):
+    if confirmation.confirmation != "APPROVE":
+        raise HTTPException(
+            status_code=400,
+            detail="Explicit APPROVE confirmation is required.",
+        )
+
+    with drafts_lock:
+        draft = drafts.get(draft_id)
+
+        if not draft or draft["status"] != "pending":
+            raise HTTPException(
+                status_code=404,
+                detail="Draft not found or no longer available for approval.",
+            )
+
+        if not draft.get("recipient"):
+            raise HTTPException(
+                status_code=400,
+                detail="Please provide a recipient email address.",
+            )
+
+        draft["approved_content_hash"] = calculate_draft_hash(draft)
+        draft["approved"] = True
+
+    return {"message": "Draft approved successfully."}
 
 @app.post("/api/drafts/{draft_id}/edit")
 def edit_draft(draft_id: str, email: DraftUpdate):
@@ -105,6 +170,7 @@ def edit_draft(draft_id: str, email: DraftUpdate):
         # Replace the draft with the exact reviewed content.
         draft.update(email.model_dump())
         draft["status"] = "pending"
+        draft["approved"] = False
 
     return {"message": "Draft updated successfully."}
 
@@ -137,7 +203,28 @@ def approve_and_send(
                 detail="Please provide a recipient email address.",
             )
 
+        # Verify that the user has approved this draft.
+        if not draft.get("approved"):
+            raise HTTPException(
+                status_code=403,
+                detail="The email must be approved before sending.",
+            )
+
+        # Verify that the email content has not changed since approval.
+        current_hash = calculate_draft_hash(draft)
+
+        if current_hash != draft.get("approved_content_hash"):
+            draft["approved"] = False
+            draft.pop("approved_content_hash", None)
+
+            raise HTTPException(
+                status_code=403,
+                detail="The email changed after approval. Review and approve it again.",
+            )
+
+        # Reserve the draft to prevent simultaneous send attempts.
         draft["status"] = "sending"
+
         email_to_send = {
             "recipient": draft["recipient"],
             "subject": draft["subject"],

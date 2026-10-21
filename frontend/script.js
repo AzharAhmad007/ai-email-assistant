@@ -2,6 +2,7 @@ const API_URL = "http://127.0.0.1:8000";
 
 let currentDraftId = null;
 let busy = false;
+let approvedSnapshot = null;
 
 
 async function apiRequest(path, options = {}) {
@@ -25,6 +26,44 @@ async function apiRequest(path, options = {}) {
 }
 
 
+function getCurrentEmail() {
+    return {
+        recipient: document.getElementById("recipient").value.trim(),
+        subject: document.getElementById("subject").value.trim(),
+        body: document.getElementById("body").value.trim()
+    };
+}
+
+
+function getEmailSnapshot(email) {
+    return JSON.stringify(email);
+}
+
+
+function invalidateApproval(message = "Email changed. Please approve it again.") {
+    approvedSnapshot = null;
+
+    const sendBtn = document.getElementById("sendBtn");
+    const sendStatus = document.getElementById("sendStatus");
+
+    sendBtn.disabled = true;
+    sendStatus.textContent = message;
+}
+
+
+function updateApprovalState() {
+    if (!approvedSnapshot) {
+        return;
+    }
+
+    const currentSnapshot = getEmailSnapshot(getCurrentEmail());
+
+    if (currentSnapshot !== approvedSnapshot) {
+        invalidateApproval();
+    }
+}
+
+
 async function generateEmail() {
     if (busy) return;
 
@@ -45,6 +84,7 @@ async function generateEmail() {
     generateBtn.disabled = true;
     draftSection.hidden = true;
     currentDraftId = null;
+    approvedSnapshot = null;
 
     status.textContent = "Generating your email...";
 
@@ -65,11 +105,14 @@ async function generateEmail() {
         document.getElementById("body").value =
             data.body || "";
 
+        document.getElementById("approveBtn").disabled = false;
+        document.getElementById("sendBtn").disabled = true;
         document.getElementById("sendStatus").textContent = "";
+
         draftSection.hidden = false;
 
         status.textContent =
-            "Email generated. Review and edit it before sending.";
+            "Email generated. Review and edit it before approving.";
 
     } catch (error) {
         status.textContent = `Error: ${error.message}`;
@@ -80,30 +123,112 @@ async function generateEmail() {
 }
 
 
-async function sendEmail() {
+async function approveEmail() {
     if (busy) return;
 
+    const sendStatus = document.getElementById("sendStatus");
+    const approveBtn = document.getElementById("approveBtn");
+    const email = getCurrentEmail();
+
     if (!currentDraftId) {
-        document.getElementById("sendStatus").textContent =
-            "Please generate a new email draft first.";
+        sendStatus.textContent = "Please generate a new draft first.";
         return;
     }
 
-    const recipient = document.getElementById("recipient").value.trim();
-    const subject = document.getElementById("subject").value.trim();
-    const body = document.getElementById("body").value.trim();
-
-    if (!recipient || !subject || !body) {
-        document.getElementById("sendStatus").textContent =
+    if (!email.recipient || !email.subject || !email.body) {
+        sendStatus.textContent =
             "Recipient, subject, and body are required.";
         return;
     }
 
-    const sendBtn = document.getElementById("sendBtn");
-    const sendStatus = document.getElementById("sendStatus");
+    const recipientInput = document.getElementById("recipient");
+
+    if (!recipientInput.checkValidity()) {
+        sendStatus.textContent = "Please enter a valid recipient email address.";
+        recipientInput.reportValidity();
+        return;
+    }
 
     const confirmed = window.confirm(
-        `Send this email?\n\nTo: ${recipient}\nSubject: ${subject}`
+        `Approve this exact email?\n\n` +
+        `To: ${email.recipient}\n` +
+        `Subject: ${email.subject}\n\n` +
+        `Review the complete email body before approving.`
+    );
+
+    if (!confirmed) {
+        sendStatus.textContent = "Approval cancelled.";
+        return;
+    }
+
+    busy = true;
+    approveBtn.disabled = true;
+    document.getElementById("sendBtn").disabled = true;
+    sendStatus.textContent = "Saving and approving your draft...";
+
+    try {
+        // Save the exact content the user reviewed.
+        await apiRequest(`/api/drafts/${currentDraftId}/edit`, {
+            method: "POST",
+            body: JSON.stringify(email)
+        });
+
+        // Record approval for the saved version.
+        const result = await apiRequest(
+            `/api/drafts/${currentDraftId}/approve`,
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    confirmation: "APPROVE"
+                })
+            }
+        );
+
+        // Enable sending only if the content is still unchanged.
+        approvedSnapshot = getEmailSnapshot(getCurrentEmail());
+
+        sendStatus.textContent =
+            `${result.message} Review complete. You can now send this email.`;
+
+        document.getElementById("sendBtn").disabled = false;
+
+    } catch (error) {
+        approvedSnapshot = null;
+        document.getElementById("sendBtn").disabled = true;
+        sendStatus.textContent = `Error: ${error.message}`;
+
+    } finally {
+        busy = false;
+        approveBtn.disabled = false;
+    }
+}
+
+
+async function sendEmail() {
+    if (busy) return;
+
+    const sendStatus = document.getElementById("sendStatus");
+    const sendBtn = document.getElementById("sendBtn");
+    const email = getCurrentEmail();
+
+    if (!currentDraftId) {
+        sendStatus.textContent = "Please generate a new draft first.";
+        return;
+    }
+
+    if (!approvedSnapshot ||
+        getEmailSnapshot(email) !== approvedSnapshot) {
+        invalidateApproval(
+            "Email is not approved or has changed. Please approve it again."
+        );
+        return;
+    }
+
+    const confirmed = window.confirm(
+        `Send the approved email now?\n\n` +
+        `To: ${email.recipient}\n` +
+        `Subject: ${email.subject}\n\n` +
+        `This action sends a real email.`
     );
 
     if (!confirmed) {
@@ -113,22 +238,11 @@ async function sendEmail() {
 
     busy = true;
     sendBtn.disabled = true;
-    sendStatus.textContent = "Saving your edits...";
+    document.getElementById("approveBtn").disabled = true;
+
+    sendStatus.textContent = "Sending email...";
 
     try {
-        // Save the exact version the user reviewed.
-        await apiRequest(`/api/drafts/${currentDraftId}/edit`, {
-            method: "POST",
-            body: JSON.stringify({
-                recipient,
-                subject,
-                body
-            })
-        });
-
-        sendStatus.textContent = "Sending email...";
-
-        // Explicit confirmation is required by the backend.
         const result = await apiRequest(
             `/api/drafts/${currentDraftId}/send`,
             {
@@ -141,17 +255,20 @@ async function sendEmail() {
 
         sendStatus.textContent = result.message;
         currentDraftId = null;
+        approvedSnapshot = null;
 
     } catch (error) {
         sendStatus.textContent = `Error: ${error.message}`;
 
-        // If sending might have started, don't automatically retry.
-        // Generate a fresh draft only after checking the SMTP logs
-        // if the outcome of the previous send is uncertain.
+        // Do not automatically retry. If the result is uncertain,
+        // check the SMTP logs before attempting another send.
 
     } finally {
         busy = false;
-        sendBtn.disabled = false;
+
+        // A failed request does not automatically restore approval.
+        sendBtn.disabled = true;
+        document.getElementById("approveBtn").disabled = false;
     }
 }
 
@@ -160,6 +277,7 @@ function rejectEmail() {
     if (busy) return;
 
     currentDraftId = null;
+    approvedSnapshot = null;
 
     document.getElementById("draftSection").hidden = true;
     document.getElementById("instructions").value = "";
@@ -167,3 +285,11 @@ function rejectEmail() {
         "Draft rejected. No email was sent.";
     document.getElementById("sendStatus").textContent = "";
 }
+
+
+["recipient", "subject", "body"].forEach((id) => {
+    document.getElementById(id).addEventListener(
+        "input",
+        updateApprovalState
+    );
+});
