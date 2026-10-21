@@ -1,3 +1,5 @@
+import hashlib
+import json
 import secrets
 from threading import Lock
 
@@ -7,9 +9,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.email_generator import generate_email
 from app.email_sender import send_email
-
-import hashlib
-import json
 
 app = FastAPI(title="AI Email Assistant API")
 

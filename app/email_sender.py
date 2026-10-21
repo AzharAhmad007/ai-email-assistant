@@ -1,12 +1,11 @@
 import os
 import smtplib
 import ssl
-import certifi
-
-from dotenv import load_dotenv
-
 from email.message import EmailMessage
 from email.utils import parseaddr
+
+import certifi
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -90,7 +89,7 @@ def send_email(
         )
 
     # Validate the recipient address
-    parsed_name, parsed_address = parseaddr(recipient)
+    _, parsed_address = parseaddr(recipient)
 
     if parsed_address != recipient or (
         parsed_address.count("@") != 1

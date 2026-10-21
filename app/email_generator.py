@@ -1,5 +1,6 @@
-import ollama
 import json
+
+import ollama
 
 MODEL_NAME = "qwen3:4b"
 

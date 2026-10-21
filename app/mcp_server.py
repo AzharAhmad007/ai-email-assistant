@@ -1,5 +1,5 @@
-from mcp.server.fastmcp import FastMCP
 import httpx
+from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("AI Email Assistant")
 
